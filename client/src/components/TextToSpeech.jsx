@@ -12,6 +12,8 @@ const TextToSpeech = () => {
   const [audioUrl, setAudioUrl] = useState('');
   const [paidMessage, setPaidMessage] = useState('');
   const [showPaidMessage, setShowPaidMessage] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [isProcessing, setIsProcessing] = useState(false);
   
   // Refs
   const audioRef = useRef(null);
@@ -53,7 +55,21 @@ const TextToSpeech = () => {
     }
     
     setIsLoading(true);
+    setIsProcessing(true);
+    setProgress(0);
     setError('');
+    
+    // Estimate processing time based on text length
+    const estimatedTimePerChar = 0.01; // seconds per character
+    const totalTime = Math.max(5, text.length * estimatedTimePerChar); // at least 5 seconds
+    
+    // Start progress simulation
+    let startTime = Date.now();
+    const progressInterval = setInterval(() => {
+      const elapsedTime = (Date.now() - startTime) / 1000;
+      const newProgress = Math.min((elapsedTime / totalTime) * 100, 95);
+      setProgress(newProgress);
+    }, 200);
     
     try {
       const response = await fetch('http://localhost:5000/api/tts', {
@@ -67,9 +83,15 @@ const TextToSpeech = () => {
         }),
       });
       
+      // Clear the progress simulation
+      clearInterval(progressInterval);
+      
       if (!response.ok) {
         throw new Error('Failed to generate speech');
       }
+      
+      // Set progress to 100% when done
+      setProgress(100);
       
       const audioBlob = await response.blob();
       const audioUrl = URL.createObjectURL(audioBlob);
@@ -81,10 +103,15 @@ const TextToSpeech = () => {
         setIsPlaying(true);
       }
     } catch (err) {
+      clearInterval(progressInterval);
       console.error('Error playing speech:', err);
       setError('Failed to play speech. Please try again.');
     } finally {
       setIsLoading(false);
+      setTimeout(() => {
+        setIsProcessing(false);
+        setProgress(0);
+      }, 1000); // Keep the 100% progress visible briefly
     }
   };
   
@@ -236,6 +263,13 @@ const TextToSpeech = () => {
             </div>
             
             {error && <div className="error-message">{error}</div>}
+            
+            {isProcessing && (
+              <div className="progress-container">
+                <div className="progress-bar" style={{ width: `${progress}%` }}></div>
+                <div className="progress-text">{Math.round(progress)}%</div>
+              </div>
+            )}
             
             {showPaidMessage && (
               <div className="paid-message-popup">
