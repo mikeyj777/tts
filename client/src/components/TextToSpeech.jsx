@@ -30,12 +30,86 @@ const TextToSpeech = () => {
   
   // Refs
   const audioRef = useRef(null);
+  const isTransitioning = useRef(false);
+  
+  // API URLs - make sure these match your Flask server configuration
+  const API_BASE_URL = 'http://localhost:5000';
+  const TTS_ENDPOINT = `${API_BASE_URL}/api/tts`;
+  const VOICES_ENDPOINT = `${API_BASE_URL}/api/tts/voices`;
+  const STREAM_ENDPOINT = `${API_BASE_URL}/api/tts/stream`;
+  const TEST_AUDIO_ENDPOINT = `${API_BASE_URL}/api/test-audio`;
+  
+  // Log API config and set up audio helpers
+  useEffect(() => {
+    // Log API configuration
+    console.log('API Configuration:', {
+      baseUrl: API_BASE_URL,
+      ttsEndpoint: TTS_ENDPOINT,
+      voicesEndpoint: VOICES_ENDPOINT,
+      streamEndpoint: STREAM_ENDPOINT
+    });
+    
+    // Configure audio elements
+    if (audioRef.current) {
+      audioRef.current.preload = 'auto';
+    }
+  }, []);
+  
+  // Create a function to handle audio loading with better error checking
+  const setupAudio = useCallback((url) => {
+    if (!audioRef.current) {
+      console.error('Audio ref is null');
+      return null;
+    }
+    
+    if (!url || url === '') {
+      console.error('Empty URL provided to setupAudio');
+      setError('Error: No audio data received from server');
+      return null;
+    }
+    
+    // Reset previous handlers
+    audioRef.current.oncanplaythrough = null;
+    audioRef.current.onerror = null;
+    
+    // Set up new handlers
+    audioRef.current.oncanplaythrough = () => {
+      console.log('Audio can play through - ready to start');
+    };
+    
+    audioRef.current.onerror = (e) => {
+      console.error('Audio element error:', e);
+      console.error('Audio error code:', audioRef.current.error ? audioRef.current.error.code : 'unknown');
+      console.error('Audio error message:', audioRef.current.error ? audioRef.current.error.message : 'unknown');
+      setError(`Audio error: ${audioRef.current.error ? audioRef.current.error.message : 'unknown error'}`);
+      isTransitioning.current = false;
+    };
+    
+    try {
+      // Set source and load audio
+      console.log('Setting audio source to:', url);
+      if (url && url.trim() !== '') {
+        audioRef.current.src = url;
+        audioRef.current.load();
+        console.log('Audio setup completed with URL:', url);
+        return url;
+      } else {
+        console.error('Attempted to set empty URL in setupAudio');
+        setError('Error: Invalid audio data received');
+        return null;
+      }
+    } catch (err) {
+      console.error('Error in setupAudio:', err);
+      setError(`Error setting up audio: ${err.message}`);
+      return null;
+    }
+  }, []);
   
   // Fetch available voices on component mount
   useEffect(() => {
     const fetchVoices = async () => {
       try {
-        const response = await fetch('http://localhost:5000/api/tts/voices');
+        const response = await fetch(VOICES_ENDPOINT);
         if (!response.ok) {
           throw new Error('Failed to fetch voices');
         }
@@ -81,7 +155,7 @@ const TextToSpeech = () => {
         [chunkIndex]: 0
       }));
       
-      const response = await fetch('http://localhost:5000/api/tts/stream', {
+      const response = await fetch(STREAM_ENDPOINT, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -141,7 +215,7 @@ const TextToSpeech = () => {
       setIsProgressiveLoading(true);
       
       // First, get chunks info
-      const response = await fetch('http://localhost:5000/api/tts/stream', {
+      const response = await fetch(STREAM_ENDPOINT, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -187,12 +261,18 @@ const TextToSpeech = () => {
     if (nextIndex < totalChunks) {
       setCurrentChunkIndex(nextIndex);
       if (audioChunksRef.current[nextIndex]) {
-        audioChunksRef.current[nextIndex].play();
+        audioChunksRef.current[nextIndex].play()
+          .catch(err => {
+            console.error(`Error playing chunk ${nextIndex}:`, err);
+            setError(`Failed to play chunk ${nextIndex}`);
+          });
       } else {
         // Try to load it if not already loaded
         loadChunk(nextIndex).then(url => {
           if (audioChunksRef.current[nextIndex]) {
-            audioChunksRef.current[nextIndex].play();
+            audioChunksRef.current[nextIndex].play().catch(err => {
+              console.error(`Error playing loaded chunk ${nextIndex}:`, err);
+            });
           }
         }).catch(err => {
           setError(`Failed to load next chunk: ${err.message}`);
@@ -203,6 +283,7 @@ const TextToSpeech = () => {
       setIsPlaying(false);
       setIsPaused(false);
       setCurrentChunkIndex(0);
+      isTransitioning.current = false;
     }
   }, [currentChunkIndex, totalChunks, loadChunk]);
   
@@ -255,23 +336,47 @@ const TextToSpeech = () => {
 
   // Play the text as speech
   const handlePlay = async () => {
+    // Prevent rapid consecutive calls
+    if (isTransitioning.current) return;
+    isTransitioning.current = true;
+    
     if (!text.trim()) {
       setError('Please enter some text to speak');
+      isTransitioning.current = false;
       return;
     }
     
     // If we're resuming from pause
     if (isPaused) {
       if (isProgressiveLoading && audioChunksRef.current[currentChunkIndex]) {
-        audioChunksRef.current[currentChunkIndex].play();
-        setIsPlaying(true);
-        setIsPaused(false);
+        audioChunksRef.current[currentChunkIndex].play()
+          .then(() => {
+            setIsPlaying(true);
+            setIsPaused(false);
+          })
+          .catch(err => {
+            console.error('Error resuming audio:', err);
+            setError('Failed to resume playback');
+          })
+          .finally(() => {
+            isTransitioning.current = false;
+          });
+        return;
       } else if (audioRef.current) {
-        audioRef.current.play();
-        setIsPlaying(true);
-        setIsPaused(false);
+        audioRef.current.play()
+          .then(() => {
+            setIsPlaying(true);
+            setIsPaused(false);
+          })
+          .catch(err => {
+            console.error('Error resuming audio:', err);
+            setError('Failed to resume playback');
+          })
+          .finally(() => {
+            isTransitioning.current = false;
+          });
+        return;
       }
-      return;
     }
     
     setIsLoading(true);
@@ -290,9 +395,18 @@ const TextToSpeech = () => {
         
         if (success && audioChunksRef.current[0]) {
           // Start playing the first chunk
-          audioChunksRef.current[0].play();
-          setIsPlaying(true);
-          setIsProgressiveLoading(true);
+          audioChunksRef.current[0].play()
+            .then(() => {
+              setIsPlaying(true);
+              setIsProgressiveLoading(true);
+            })
+            .catch(err => {
+              console.error('Error playing first chunk:', err);
+              throw new Error('Failed to play first chunk');
+            })
+            .finally(() => {
+              isTransitioning.current = false;
+            });
         } else {
           throw new Error('Failed to initialize progressive playback');
         }
@@ -300,7 +414,9 @@ const TextToSpeech = () => {
         console.error('Error with progressive playback:', err);
         setError('Progressive playback failed. Falling back to standard mode.');
         // Fall back to standard mode
-        playStandardMode();
+        setTimeout(() => {
+          playStandardMode();
+        }, 100);
       } finally {
         setIsLoading(false);
         setIsProcessing(false);
@@ -326,7 +442,7 @@ const TextToSpeech = () => {
     }, 200);
     
     try {
-      const response = await fetch('http://localhost:5000/api/tts', {
+      const response = await fetch(TTS_ENDPOINT, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -340,15 +456,45 @@ const TextToSpeech = () => {
       // Clear the progress simulation
       clearInterval(progressInterval);
       
+      console.log('Response status:', response.status);
+      console.log('Response headers:', [...response.headers.entries()]);
+      
       if (!response.ok) {
-        throw new Error('Failed to generate speech');
+        console.error('Response not OK:', response.status, response.statusText);
+        const errorText = await response.text().catch(e => 'Unable to get error details');
+        console.error('Error response body:', errorText);
+        throw new Error(`Failed to generate speech: ${response.status} ${response.statusText}`);
       }
       
       // Set progress to 100% when done
       setProgress(100);
       
       const audioBlob = await response.blob();
+      console.log('Audio blob received:', {
+        type: audioBlob.type,
+        size: audioBlob.size,
+        lastModified: audioBlob.lastModified
+      });
+      
+      // Check if blob is valid
+      if (audioBlob.size === 0) {
+        throw new Error('Received empty audio data from server');
+      }
+      
+      // Check content type
+      if (!audioBlob.type.includes('audio')) {
+        console.warn('Unexpected content type in response:', audioBlob.type);
+        // Try to detect if we got an error response instead of audio
+        if (audioBlob.type.includes('application/json') || audioBlob.type.includes('text')) {
+          const textData = await new Response(audioBlob).text();
+          console.error('Received text instead of audio:', textData);
+          throw new Error(`Server returned text instead of audio: ${textData.substring(0, 100)}...`);
+        }
+      }
+      
+      // Create URL from blob
       const audioUrl = URL.createObjectURL(audioBlob);
+      console.log('Created object URL:', audioUrl);
       setAudioUrl(audioUrl);
       
       // Reset to first sentence
@@ -356,9 +502,51 @@ const TextToSpeech = () => {
       setIsProgressiveLoading(false);
       
       if (audioRef.current) {
-        audioRef.current.src = audioUrl;
-        audioRef.current.play();
-        setIsPlaying(true);
+        // Set up audio with error handling
+        const setupResult = setupAudio(audioUrl);
+        
+        if (!setupResult) {
+          throw new Error('Failed to set up audio element');
+        }
+        
+        // Manual check before playing
+        if (!audioRef.current.src || audioRef.current.src === '') {
+          throw new Error('Audio source is empty after setup');
+        }
+        
+        console.log('Starting playback with src:', audioRef.current.src);
+        
+        // Play the audio
+        try {
+          const playPromise = audioRef.current.play();
+          
+          if (playPromise) {
+            playPromise
+              .then(() => {
+                console.log('Audio playback started successfully');
+                setIsPlaying(true);
+              })
+              .catch(err => {
+                console.error('Error during audio playback:', err);
+                setError(`Failed to play audio: ${err.message}`);
+              })
+              .finally(() => {
+                isTransitioning.current = false;
+              });
+          } else {
+            console.log('Play did not return a promise - older browser?');
+            setIsPlaying(true);
+            isTransitioning.current = false;
+          }
+        } catch (err) {
+          console.error('Exception during play():', err);
+          setError(`Exception during playback: ${err.message}`);
+          isTransitioning.current = false;
+        }
+      } else {
+        console.error('Audio ref is null when trying to play');
+        setError('Internal error: Audio player not available');
+        isTransitioning.current = false;
       }
     } catch (err) {
       clearInterval(progressInterval);
@@ -369,12 +557,18 @@ const TextToSpeech = () => {
       setTimeout(() => {
         setIsProcessing(false);
         setProgress(0);
+        if (!isTransitioning.current) {
+          isTransitioning.current = false;
+        }
       }, 1000); // Keep the 100% progress visible briefly
     }
   };
   
   // Stop playing audio
   const handleStop = () => {
+    if (isTransitioning.current) return;
+    isTransitioning.current = true;
+    
     if (isProgressiveLoading) {
       // Stop all chunk audios
       audioChunksRef.current.forEach(audio => {
@@ -392,10 +586,16 @@ const TextToSpeech = () => {
     setIsPlaying(false);
     setIsPaused(false);
     setCurrentSentenceIndex(0);
+    setTimeout(() => {
+      isTransitioning.current = false;
+    }, 100); // Brief delay to prevent immediate play/pause conflicts
   };
   
   // Pause playing audio
   const handlePause = () => {
+    if (isTransitioning.current) return;
+    isTransitioning.current = true;
+    
     if (isProgressiveLoading) {
       // Pause current chunk audio
       if (audioChunksRef.current[currentChunkIndex]) {
@@ -408,6 +608,10 @@ const TextToSpeech = () => {
       setIsPlaying(false);
       setIsPaused(true);
     }
+    
+    setTimeout(() => {
+      isTransitioning.current = false;
+    }, 100); // Brief delay to prevent immediate play/pause conflicts
   };
   
   // Handle audio time update to track current sentence
@@ -548,10 +752,61 @@ const TextToSpeech = () => {
     setPaidMessage(paidVersionMessages[randomIndex]);
     setShowPaidMessage(true);
     
-    // Hide the message after 5 seconds
+    // Hide the message after 3 seconds
     setTimeout(() => {
       setShowPaidMessage(false);
-    }, 5000);
+    }, 3000);
+  };
+  
+  // Test audio playback with a simple static audio
+  const testAudioPlayback = async () => {
+    try {
+      setError('');
+      console.log('Testing audio playback with test endpoint');
+      
+      const response = await fetch(TEST_AUDIO_ENDPOINT);
+      
+      if (!response.ok) {
+        throw new Error(`Error fetching test audio: ${response.status} ${response.statusText}`);
+      }
+      
+      const testBlob = await response.blob();
+      console.log('Test audio blob:', {
+        type: testBlob.type,
+        size: testBlob.size
+      });
+      
+      if (testBlob.size === 0) {
+        throw new Error('Test audio blob is empty');
+      }
+      
+      const testUrl = URL.createObjectURL(testBlob);
+      console.log('Test audio URL:', testUrl);
+      
+      // Create a temporary audio element
+      const tempAudio = new Audio(testUrl);
+      
+      tempAudio.onerror = (e) => {
+        console.error('Test audio error:', e);
+        setError('Test audio error: ' + (tempAudio.error?.message || 'unknown error'));
+      };
+      
+      tempAudio.oncanplaythrough = () => {
+        console.log('Test audio loaded and can play');
+      };
+      
+      // Play the test audio
+      try {
+        await tempAudio.play();
+        console.log('Test audio playing');
+      } catch (err) {
+        console.error('Error playing test audio:', err);
+        setError(`Test audio play error: ${err.message}`);
+      }
+    } catch (err) {
+      console.error('Test audio error:', err);
+      setError(`Test audio error: ${err.message}`);
+    }
   };
   
   return (
@@ -595,11 +850,20 @@ const TextToSpeech = () => {
               ref={audioRef} 
               onEnded={handleAudioEnd}
               onTimeUpdate={handleTimeUpdate}
+              onLoadedData={() => console.log('Audio loaded')}
+              onCanPlayThrough={() => console.log('Audio can play through')}
+              onStalled={() => console.log('Audio playback stalled')}
+              onSuspend={() => console.log('Audio loading suspended')}
               className="audio-element"
-              preload="auto"
+              preload="metadata"
+              src={audioUrl || null}
               onError={(e) => {
-                console.error('Audio error:', e);
-                setError('Error loading audio. Please try again.');
+                // Only log errors if we have a URL set
+                if (audioUrl) {
+                  console.error('Audio error:', e);
+                  console.error('Audio error details:', audioRef.current?.error);
+                  setError('Error loading audio. Please try again.');
+                }
               }}
             />
           </div>
@@ -677,6 +941,13 @@ const TextToSpeech = () => {
                 className="btn paid-btn"
               >
                 Paid Version
+              </button>
+              
+              <button
+                onClick={testAudioPlayback}
+                className="btn test-btn"
+              >
+                Test Audio
               </button>
             </div>
             

@@ -112,40 +112,38 @@ def text_to_speech():
         if not text.strip():
             return jsonify({"error": "Empty text provided"}), 400
         
+        # Log the request for debugging
+        print(f"TTS Request: {len(text)} chars, voice: {voice}")
+        
         # For streaming mode, use the stream endpoint
         if stream_mode:
             return stream_text_to_speech()
         
-        # Check text length and chunk if necessary
-        MAX_CHUNK_LENGTH = 3000  # Characters - Edge TTS works well with chunks this size
-        
-        if len(text) > MAX_CHUNK_LENGTH:
-            # Split by sentences to avoid cutting words
-            chunks = chunk_text_by_sentences(text, MAX_CHUNK_LENGTH)
-            
-            # Create a combined audio buffer
-            combined_buffer = io.BytesIO()
-            
-            for chunk in chunks:
-                # Generate speech for each chunk
-                chunk_buffer = asyncio.run(generate_speech(chunk, voice))
-                combined_buffer.write(chunk_buffer.read())
-            
-            # Reset buffer position
-            combined_buffer.seek(0)
-            audio_buffer = combined_buffer
-        else:
-            # Process as before for small texts
+        try:
+            # Get the audio buffer
             audio_buffer = asyncio.run(generate_speech(text, voice))
-        
-        # Return the audio as a response
-        return Response(
-            audio_buffer.read(),
-            mimetype="audio/mp3",
-            headers={
-                "Content-Disposition": "attachment;filename=speech.mp3"
-            }
-        )
+            
+            # Check if buffer has content
+            audio_buffer.seek(0, io.SEEK_END)
+            buffer_size = audio_buffer.tell()
+            audio_buffer.seek(0)  # Reset to beginning
+            
+            if buffer_size == 0:
+                return jsonify({"error": "Edge TTS generated empty audio"}), 500
+                
+            print(f"Generated audio size: {buffer_size} bytes")
+            
+            # Return the audio as a response
+            return Response(
+                audio_buffer.read(),
+                mimetype="audio/mp3",
+                headers={
+                    "Content-Disposition": "attachment;filename=speech.mp3"
+                }
+            )
+        except Exception as e:
+            print(f"TTS Error: {str(e)}")
+            return jsonify({"error": str(e)}), 500
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

@@ -305,6 +305,15 @@ label {
   background: #ffcc00;
 }
 
+.test-btn {
+  background: #a855f7;
+  color: white;
+}
+
+.test-btn:hover {
+  background: #9333ea;
+}
+
 .paid-message-popup {
   position: fixed;
   top: 50%;
