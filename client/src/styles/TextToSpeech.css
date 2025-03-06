@@ -175,7 +175,8 @@ label {
 
 .controls {
   display: flex;
-  gap: 15px;
+  flex-wrap: wrap;
+  gap: 10px;
   margin-top: 10px;
 }
 
@@ -218,6 +219,57 @@ label {
   background: #8f2a2a;
   cursor: not-allowed;
   opacity: 0.7;
+}
+
+.download-btn {
+  background: #4caf50;
+  color: white;
+}
+
+.download-btn:hover:not(:disabled) {
+  background: #3d9140;
+}
+
+.download-btn:disabled {
+  background: #2a5f2c;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.paid-btn {
+  background: #ffd700;
+  color: #333;
+}
+
+.paid-btn:hover {
+  background: #ffcc00;
+}
+
+.paid-message-popup {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.9);
+  color: white;
+  padding: 20px;
+  border-radius: 10px;
+  z-index: 1000;
+  max-width: 300px;
+  text-align: center;
+  animation: popup 0.3s ease-in-out;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+}
+
+@keyframes popup {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -60%);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
 }
 
 .error-message {

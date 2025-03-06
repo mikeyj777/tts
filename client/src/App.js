@@ -11,11 +11,11 @@ const App = () => {
       <div>
         <nav className="app-navigation">
           <Link to="/" className="nav-link">Home</Link>
-          <Link to="/text-to-speech" className="nav-link">Text to Speech</Link>
+          <Link to="/tts" className="nav-link">Text to Speech</Link>
         </nav>
         <Routes>
           <Route path="/" element={<Home />} />
-          <Route path="/text-to-speech" element={<TextToSpeech />} />
+          <Route path="/tts" element={<TextToSpeech />} />
         </Routes>
       </div>
     </Router>

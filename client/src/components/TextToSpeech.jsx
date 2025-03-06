@@ -9,6 +9,9 @@ const TextToSpeech = () => {
   const [selectedVoice, setSelectedVoice] = useState('en-US-AriaNeural');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [audioUrl, setAudioUrl] = useState('');
+  const [paidMessage, setPaidMessage] = useState('');
+  const [showPaidMessage, setShowPaidMessage] = useState(false);
   
   // Refs
   const audioRef = useRef(null);
@@ -70,6 +73,7 @@ const TextToSpeech = () => {
       
       const audioBlob = await response.blob();
       const audioUrl = URL.createObjectURL(audioBlob);
+      setAudioUrl(audioUrl);
       
       if (audioRef.current) {
         audioRef.current.src = audioUrl;
@@ -96,6 +100,42 @@ const TextToSpeech = () => {
   // Handle audio end event
   const handleAudioEnd = () => {
     setIsPlaying(false);
+  };
+
+  // Handle download functionality
+  const handleDownload = () => {
+    if (!audioUrl) return;
+    
+    const a = document.createElement('a');
+    a.href = audioUrl;
+    a.download = 'speech.mp3';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+  
+  // Array of humorous messages for the paid version popup
+  const paidVersionMessages = [
+    "Paid version? Are you crazy? This took all of 5 minutes to make!",
+    "Do you think I'm greedy or something?",
+    "Sorry, the paid version is still in development... and will be forever.",
+    "The paid version includes exactly zero extra features.",
+    "The paid version is identical, but costs money. Still interested?",
+    "If you like this free tool, consider not paying for it!",
+    "Paid version temporarily unavailable... permanently."
+  ];
+  
+  // Handle paid version button click
+  const handlePaidVersion = () => {
+    // Select a random message from the array
+    const randomIndex = Math.floor(Math.random() * paidVersionMessages.length);
+    setPaidMessage(paidVersionMessages[randomIndex]);
+    setShowPaidMessage(true);
+    
+    // Hide the message after 5 seconds
+    setTimeout(() => {
+      setShowPaidMessage(false);
+    }, 5000);
   };
   
   return (
@@ -178,9 +218,30 @@ const TextToSpeech = () => {
               >
                 Stop
               </button>
+              
+              <button
+                onClick={handleDownload}
+                disabled={!audioUrl}
+                className="btn download-btn"
+              >
+                Download MP3
+              </button>
+              
+              <button
+                onClick={handlePaidVersion}
+                className="btn paid-btn"
+              >
+                Paid Version
+              </button>
             </div>
             
             {error && <div className="error-message">{error}</div>}
+            
+            {showPaidMessage && (
+              <div className="paid-message-popup">
+                <p>{paidMessage}</p>
+              </div>
+            )}
           </div>
         </div>
       </div>
