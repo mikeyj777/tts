@@ -1,0 +1,6 @@
+/* src/styles/global.css */
+
+/* Import all component stylesheets */
+@import './Home.css';
+@import './TextToSpeech.css';
+
